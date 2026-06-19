@@ -16,7 +16,7 @@ The following table details the network layout and infrastructure of the offensi
 | **c-db-01** | `c-db-01` | — | `10.1.0.15` | — |
 
 #### 🌐 Two-Network Diagram
-
+#### **Two-Network Diagram**
 
   ┌────────────────────────────────────────────────────────┐
   │ PUBLIC NETWORK - br_public (172.16.10.0/24)            │
