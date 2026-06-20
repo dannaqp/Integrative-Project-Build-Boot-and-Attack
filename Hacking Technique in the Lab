@@ -107,7 +107,8 @@ Route Exposure Surface: The endpoint @app.route('/files/<path:path>') was discov
 the use of a dynamic parameter <path:path> combined with functions like send_from_directory or send_file indicates a high risk of Path Traversal 
 (Directory Traversal) or arbitrary file read vulnerabilities if the input parameter is not rigorously sanitized.
 
-Database Exploitation & Sensitive Data Exfiltration
+Database Exploitation & Sensitive Data Exfiltration (Advanced Level)
+Chosen Level: Advanced — Reproduce a technique guided by a later chapter against the lab (Full Infrastructure Pivot & Data Exfiltration).
 What the technique does: This technique involves exploiting insecurely stored credentials discovered during source code/infrastructure reviews
 to gain direct administrative access to a backend database server. Once inside, it utilizes database querying techniques to map out tables and exfiltrate
 highly sensitive corporate records, such as cryptographic password hashes and user accounts
@@ -137,7 +138,7 @@ Building dependency tree... Done
 ...
 Unpacking mysql-client-dev (8.0.46-0ubuntu0.24.04.2) over (8.0.45-0ubuntu0.24.04.1) ...
 
-Step 3: Authenticating and Mapping the Database Structure
+Step 3: Authenticating and Mapping the Database Structure 
 @Dicami ➔ /workspaces/Integrative-Project-Build-Boot-and-Attack/Black-Hat-Bash/lab (master) $ mysql -h 10.1.0.16 -u wordpress -pwordpress wordpress
 Welcome to the MariaDB monitor.  Commands end with ; or \g.
 Your MySQL connection id is 14
