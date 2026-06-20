@@ -10,7 +10,7 @@ Why it works: Network services open sockets (ports) to accept incoming traffic. 
 analyzing the structural responses or application banners returned, `nmap` can accurately deduce the specific software and exact version running within the corporate environment.
 Evidence (Command + Output):
     bash
-    $ nmap -sV --open -T4 10.1.0.13 10.1.0.14 10.1.0.15 10.1.0.16
+    @Dicami ➔ /workspaces/Integrative-Project-Build-Boot-and-Attack/Black-Hat-Bash/lab (master)$ nmap -sV --open -T4 10.1.0.13 10.1.0.14 10.1.0.15 10.1.0.16
     
     Starting Nmap 7.94SVN ( [https://nmap.org](https://nmap.org) ) at 2026-06-19 22:54 UTC
     Nmap scan report for 10.1.0.13
@@ -39,3 +39,72 @@ The scan mapped out active infrastructure components within the target subnet, i
 Host 10.1.0.13: Exposes port 8080/tcp running a SimpleHTTPServer 0.6 (Python 3.12.3).
 Host 10.1.0.14: Exposes port 22/tcp running an older instance of OpenSSH 7.9p1 on Debian 10.
 This initial footprint defined the target surface. Further active routing enumeration exposed an internal file transfer node at IP 172.16.10.11, which was selected as the next tactical target.
+
+Phase 2: Vulnerability Exploitation & Information Gathering (Anonymous FTP Access)
+What the technique does: It consists of exploiting a weak configuration in the File Transfer Protocol (FTP) service by utilizing an unauthenticated session known as an Anonymous Login. 
+This technique aims to access the directory tree of the remote server without requiring valid credentials assigned to a specific user.
+Why it works: By default or due to poor administrative practices in internal environments, FTP servers (in this case, vsFTPd 3.0.5) 
+are sometimes configured to allow the anonymous or ftp username with any password (or left blank). If the filesystem Access Control Lists (ACLs) are not properly segregated, 
+an attacker with network visibility can navigate through backup or production directories and extract sensitive corporate information.
+Evidence (Command + Output):
+@Dicami ➔ /workspaces/Integrative-Project-Build-Boot-and-Attack/Black-Hat-Bash/lab (master) $ ftp 172.16.10.11
+Connected to 172.16.10.11.
+220 (vsFTPd 3.0.5)
+Name (172.16.10.11:codespace): anonymous
+331 Please specify the password.
+Password:
+230 Login successful.
+Remote system type is UNIX.
+Using binary mode to transfer files.
+ftp> cd backup/acme-hyper-branding
+250 Directory successfully changed.
+ftp>
+What information/access was obtained and Technical Interpretation:
+Configuration Breach: The 230 Login successful response code confirmed that the vsFTPd 3.0.5 server permitted anonymous access, directly exposing infrastructure data.
+Movement and Exfiltration: Upon executing the cd backup/acme-hyper-branding command, the server responded with a 250 Directory successfully changed status code, 
+validating the existence of an exposed corporate backup directory. From this point, the process moved forward to identify and download (exfiltrate) 
+critical files for subsequent static analysis—most notably, the source code of the main web application (app.py).
+
+
+Phase 3: Source Code Review & Code Analysis (app.py)
+What the technique does: It corresponds to a static code analysis phase (White-box Source Code Review) conducted after successfully exfiltrating 
+the files from the FTP server. The objective is to audit the internal structure of the application to identify hidden routes, environment variables,
+active debugging configurations, or logical flaws in request handling.
+
+Why it works: Having direct access to the source code eliminates the need for blind testing (Black-box fuzzing). 
+It allows for a microscopic inspection of how the application processes user data, mapping out all available endpoints (web routes),
+and verifying the presence of sanitization failures or insecure execution modes.
+Evidence (Command + Output):
+@Dicami ➔ /workspaces/Integrative-Project-Build-Boot-and-Attack/Black-Hat-Bash/lab (master) $ cat app.py
+import os, subprocess
+
+from flask import (
+    Flask,
+    send_from_directory,
+    send_file,
+    render_template,
+    request
+)
+
+app = Flask(__name__, template_folder=".", static_folder='static',)
+app.debug = True
+app.config['UPLOAD_FOLDER'] = "uploads/"
+
+@app.route('/')
+def hello_world():
+    return render_template('index.html')
+
+@app.route('/files/<path:path>')
+def files(path):
+...
+What information/access was obtained and Technical Interpretation:
+Active Debug Mode: The line app.debug = True reveals that the Flask web server is running in development mode. In production environments,
+this is extremely dangerous because if an unhandled exception occurs, Flask will render an interactive Werkzeug console in the browser. 
+This potentially allows for Remote Code Execution (RCE) via default or leaked PINs.
+Dangerous Module Imports: The presence of import subprocess indicates that the application directly interacts with the underlying operating system
+at the shell level.
+Route Exposure Surface: The endpoint @app.route('/files/<path:path>') was discovered. Although the snippet is truncated in the capture, 
+the use of a dynamic parameter <path:path> combined with functions like send_from_directory or send_file indicates a high risk of Path Traversal 
+(Directory Traversal) or arbitrary file read vulnerabilities if the input parameter is not rigorously sanitized.
+
+
