@@ -31,13 +31,15 @@ What information/access was obtained & Technical Interpretation:**
     While no direct system access or credentials were acquired during this phase, it achieved a tactical mapping and complete reconnaissance of the Corporate Network (`10.1.0.0/24`),
 gathering critical strategic intelligence about the internal infrastructure that remains hidden from the outside:
     
-    1. Host 10.1.0.13 (Internal Corporate Network Web Server): It was determined to expose port "8080/tcp" running `SimpleHTTPServer 0.6` under "Python 3.12.3".
-As an internal development service, it represents a high-interest exploitation vector due to the common lack of strict security hardening policies in this zone.
-    2. Host 10.1.0.14 (Corporate Network Administration Server):** The scan detected an active "OpenSSH 7.9p1" service on port "22/tcp" hosted on a "Linux" system (specifically "Debian 10+deb10u2"). 
-Identifying this service inside the corporate network segment provides a key target for auditing weak credentials or known software flaws to consolidate lateral movement.
+1. Host 10.1.0.13 (c-backup-01): It was determined to expose port "8080/tcp" running `SimpleHTTPServer 0.6` under "Python 3.12.3". Even though this node serves as a backend backup component, 
+running an unhardened development server internally represents a high-interest target due to potential structural leaks or lack of strict internal firewalls.
+2. Host 10.1.0.14 (c-redis-01): The scan detected an active "OpenSSH 7.9p1" service on port "22/tcp" hosted on a "Linux" system (specifically "Debian 10+deb10u2")
+. Identifying an active SSH daemon inside a backend container segment (like Redis) provides a critical asset pivot point for lateral movement or weak credential auditing.
+
 The scan mapped out active infrastructure components within the target subnet, identifying two highly relevant attack vectors:
-Host 10.1.0.13: Exposes port 8080/tcp running a SimpleHTTPServer 0.6 (Python 3.12.3).
-Host 10.1.0.14: Exposes port 22/tcp running an older instance of OpenSSH 7.9p1 on Debian 10.
+- Host 10.1.0.13 (c-backup-01): Exposes port 8080/tcp running a SimpleHTTPServer 0.6 (Python 3.12.3).
+- Host 10.1.0.14 (c-redis-01): Exposes port 22/tcp running an instance of OpenSSH 7.9p1 on Debian 10.
+
 This initial footprint defined the target surface. Further active routing enumeration exposed an internal file transfer node at IP 172.16.10.11, which was selected as the next tactical target.
 
 Phase 2: Vulnerability Exploitation & Information Gathering (Anonymous FTP Access)
