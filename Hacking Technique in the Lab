@@ -185,3 +185,6 @@ Critical Data Exfiltration: By targeting the wp_users table, corporate credentia
 Cryptographic Analysis: The acquired password hash ($P$BVO7KQKhlmQ/M5f.cbQNyegYC38cNG/) uses the phpass / MD5 (WordPress) hashing algorithm. 
 This hash can now be extracted into an external cracking system (like Hashcat or John the Ripper) to reverse it into plaintext, 
 providing the exact password needed to hijack the user's sessions across other enterprise platforms.
+
+
+Made by: Camila Villagran
