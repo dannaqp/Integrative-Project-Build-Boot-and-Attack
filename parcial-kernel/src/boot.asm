@@ -67,7 +67,7 @@ long_mode_start:
     mov es, ax
     
     extern kernel_main
-    call kernel_main             ; Saltamos felices a tu código de C
+    call kernel_main             ; Salta al código de C
     cli
 .halt:
     hlt
