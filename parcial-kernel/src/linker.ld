@@ -22,3 +22,12 @@ SECTIONS {
         *(.bss)
     }
 }
+
+grub.cfg:
+set timeout=0
+set default=0
+
+menuentry "Unix Proyecto Kernel" {
+    multiboot2 /boot/kernel.bin
+    boot
+}

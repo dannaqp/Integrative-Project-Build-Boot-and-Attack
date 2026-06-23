@@ -3,7 +3,7 @@ void kernel_main(void) {
     char *video_memory = (char *)0xB8000;
     
     // Mensaje temporal de marcador de posición
-    const char *message = "Hello, Unix Proyecto Kernel!";
+    const char *message = "Ingenieria en Sistemas la mejor carrera de la UIDE.";
     
     // 1. Limpiar la pantalla de residuos del arranque (80 columnas x 25 filas)
     for (int i = 0; i < 80 * 25 * 2; i += 2) {
