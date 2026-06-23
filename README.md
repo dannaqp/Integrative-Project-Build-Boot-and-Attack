@@ -8,11 +8,7 @@ This section contains the source code, Docker environment configuration, and aut
 
 ## 1. Deliverables: ISO File & Video Demonstration
 
-* **Download Link (ISO):** [Insert Google Drive / OneDrive link here]
-* **File Integrity (SHA256 Checksum):** `[Insert the hash generated via Get-FileHash here]`
-* **Video Demonstration (≤ 2 min):** [Insert YouTube / Drive link here]
-  > *Note: The video showcases the kernel building process and its successful bare-metal boot in QEMU.*
-
+* **Download Link (ISO):** https://github.com/dannaqp/Integrative-Project-Build-Boot-and-Attack/tree/rama-kernel/parcial-kernel 
 ---
 
 ## 2. Reproducible Development Environment
